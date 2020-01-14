@@ -68,7 +68,7 @@ if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-projec
 
 options(digits=3, scipen=999)
 dl <- tempfile()
-download.file("https://raw.githubusercontent.com/charlessuresh/homework-0/master/network-anamoly-detection.zip", dl,mode="wb")
+download.file("https://raw.githubusercontent.com/charlessuresh/Network-Anomaly-Detection-Classification/master/network-anamoly-detection.zip", dl,mode="wb")
 
 
 unzip(dl, files = c("Train.txt","Test.txt"))
