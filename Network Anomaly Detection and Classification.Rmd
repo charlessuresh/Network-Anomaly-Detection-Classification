@@ -1,0 +1,3571 @@
+---
+title: "Network Anomaly Detection Report"
+author: "Charles Suresh"
+date: "28/08/2019"
+geometry: "left=1cm,right=1cm,top=1cm,bottom=1.5cm"
+output:
+  pdf_document: 
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+documentclass: article
+classoption: letter
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\pagebreak
+
+# Overview
+
+This Report is related to the Capstone Project under the HarvardX Data Science Course: PH125.9x.
+With the increasing reliance on technology, it is becoming more and more essential to secure every aspect of online information and data. As the internet grows and computer networks become bigger, network security has become one of the most important aspects for organizations to consider. While there is no network that is immune to attacks, a stable and efficient network security system is essential to protecting data and for seamless operations.
+
+To goal of this project was to build a network intrusion detection system that can do two things:
+
+1. Detect whether a network acitivity is normal or is an attack (Binomial Classification)
+2. To classify the type of network attack as:
+    a) Normal
+    b) DoS (Denial of Service)
+    c) Probe
+    d) R2L (Remote to Local/User)
+    e) U2R (User to Root)
+
+The dataset used for building the network intrusion detection system is from kaggle: https://www.kaggle.com/anushonkar/network-anamoly-detection
+
+The available dataset is already split into Train and Test sets. However, the two sets were combined and split into 'edx' set and 'validation' set using the'createDataPartition' function to ensure even distrubition of different attack types. Algorithms were developed and tested by further splitting the 'edx' set into 'Train' and 'Test' sets. After selecting a suitable model, the entire 'edx' set was used to train the algorithm and make the final predictions on the 'validation' set. The metric used for assessing the models are:
+
+1. For the Binomail Classifiction: Accuracy, Sensitivity and Specificity
+2. For the Multinomial Classification: Accuracy
+
+Because of the large number of features in the dataset, dimension reduction was attempted. Since substantial dimension reduction could not be achieved, Random Forest and Decision Trees, on account of being the most suited to datasets with high dimensions, were used. 
+
+```{r Create edx and validation sets, include=FALSE}
+################################
+# Create edx set, validation set
+################################
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(gam)) install.packages("gam", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(Gifi)) install.packages("Gifi", repos = "http://cran.us.r-project.org")
+if(!require(PCAmix)) install.packages("PCAmix", repos = "http://cran.us.r-project.org")
+if(!require(FactoMineR)) install.packages("FactoMineR", repos = "http://cran.us.r-project.org")
+if(!require(readr)) install.packages("readr", repos = "http://cran.us.r-project.org")
+if(!require(DataExplorer)) install.packages("DataExplorer", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+if(!require(tidyr)) install.packages("tidyr", repos = "http://cran.us.r-project.org")
+if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
+
+
+options(digits=3, scipen=999)
+dl <- tempfile()
+download.file("https://raw.githubusercontent.com/charlessuresh/Network-Anomaly-Detection-Classification/master/network-anamoly-detection.zip", dl,mode="wb")
+
+
+unzip(dl, files = c("Train.txt","Test.txt"))
+set_1 <- read_delim("Train.txt", delim=",",col_names = c("duration","protocol_type",
+                                          "service","flag","src_bytes",
+                                          "dst_bytes","land", "wrong_fragment",
+                                          "urgent","hot","num_failed_logins",
+                                          "logged_in", "num_compromised",
+                                          "root_shell","su_attempted","num_root",
+                                          "num_file_creations","num_shells",
+                                          "num_access_files","num_outbound_cmds",
+                                          "is_hot_login", "is_guest_login","count",
+                                          "srv_count","serror_rate", "srv_serror_rate",
+                                          "rerror_rate","srv_rerror_rate","same_srv_rate",
+                                          "diff_srv_rate", "srv_diff_host_rate",
+                                          "dst_host_count","dst_host_srv_count",
+                                          "dst_host_same_srv_rate", "dst_host_diff_srv_rate",
+                                          "dst_host_same_src_port_rate", "dst_host_srv_diff_host_rate",
+                                          "dst_host_serror_rate","dst_host_srv_serror_rate",
+                                          "dst_host_rerror_rate","dst_host_srv_rerror_rate",
+                                           "attack", "last_flag"),
+                   col_types = list(col_double(),col_factor(),col_factor(),col_factor(),col_integer(),col_integer(),
+                                    col_factor(),col_integer(),col_integer(),col_integer(),col_integer(),
+                                    col_factor(),col_integer(),col_factor(),col_integer(),col_integer(),
+                                    col_integer(),col_integer(),col_integer(),col_integer(),col_factor(),
+                                    col_factor(),col_integer(),col_integer(),col_double(),col_double(),
+                                    col_double(),col_double(),col_double(),col_double(),col_double(),
+                                    col_integer(),col_integer(),col_double(),col_double(),col_double(),
+                                    col_double(),col_double(),col_double(),col_double(),col_double(),
+                                    col_factor(),col_factor()))
+
+set_2 <- read_delim("Test.txt", delim=",",col_names = c("duration","protocol_type",
+                                                           "service","flag","src_bytes",
+                                                           "dst_bytes","land", "wrong_fragment",
+                                                           "urgent","hot","num_failed_logins",
+                                                           "logged_in", "num_compromised",
+                                                           "root_shell","su_attempted","num_root",
+                                                           "num_file_creations","num_shells",
+                                                           "num_access_files","num_outbound_cmds",
+                                                           "is_hot_login", "is_guest_login","count",
+                                                           "srv_count","serror_rate", "srv_serror_rate",
+                                                           "rerror_rate","srv_rerror_rate","same_srv_rate",
+                                                           "diff_srv_rate", "srv_diff_host_rate",
+                                                           "dst_host_count","dst_host_srv_count",
+                                                           "dst_host_same_srv_rate", "dst_host_diff_srv_rate",
+                                                           "dst_host_same_src_port_rate", "dst_host_srv_diff_host_rate",
+                                                           "dst_host_serror_rate","dst_host_srv_serror_rate",
+                                                           "dst_host_rerror_rate","dst_host_srv_rerror_rate",
+                                                           "attack", "last_flag"),
+                      col_types = list(col_double(),col_factor(),col_factor(),col_factor(),col_integer(),col_integer(),
+                                       col_factor(),col_integer(),col_integer(),col_integer(),col_integer(),
+                                       col_factor(),col_integer(),col_factor(),col_integer(),col_integer(),
+                                       col_integer(),col_integer(),col_integer(),col_integer(),col_factor(),
+                                       col_factor(),col_integer(),col_integer(),col_double(),col_double(),
+                                       col_double(),col_double(),col_double(),col_double(),col_double(),
+                                       col_integer(),col_integer(),col_double(),col_double(),col_double(),
+                                       col_double(),col_double(),col_double(),col_double(),col_double(),
+                                       col_factor(),col_factor()))
+
+set <- rbind.data.frame(set_1,set_2)
+
+#Removing the last column (last_flag) as it will not be used
+set <- set[-43]
+
+#Creating detect column for binomial classification
+set <- set %>% mutate(detect= ifelse(attack=="normal","normal","abnormal"))%>%
+  mutate(detect = as.factor(detect))
+
+#Creating attack_class column for attack class classification
+set <- set %>% mutate(attack_class = ifelse(attack=="back"|attack=="land"|attack=="neptune"|attack=="pod"|attack=="smurf"|attack=="teardrop"|attack=="apache2"|attack=="udpstorm"|attack=="processtable"|attack=="worm"|attack=="mailbomb","dos",ifelse(attack=="satan"|attack=="ipsweep"|attack=="nmap"|attack=="portsweep"|attack=="mscan"|attack=="saint","probe",ifelse(attack=="guess_passwd"|attack=="ftp_write"|attack=="imap"|attack=="phf"|attack=="multihop"|attack=="warezmaster"|attack=="warezclient"|attack=="spy"|attack=="xlock"|attack=="xsnoop"|attack=="snmpguess"|attack=="snmpgetattack"|attack=="httptunnel"|attack=="sendmail"|attack=="named","r2l",ifelse(attack=="buffer_overflow"|attack=="loadmodule"|attack=="rootkit"|attack=="perl"|attack=="sqlattack"|attack=="xterm"|attack=="ps","u2r","normal"))))) 
+
+#Setting levels for attacks
+set$attack <- factor(set$attack,levels(factor(set$attack))[c(1,11,20,2,10,9,6,26,40,28,36,32,8,4,7,5,25,24,12,13,17,19,14,18,3,22,37,38,31,27,29,34,33,16,21,15,23,39,35,30)])
+
+#Setting levels for attack
+set$detect <- factor(set$detect,levels(factor(set$detect))[c(2,1)])
+
+#Setting levels for attack class
+set$attack_class <- factor(set$attack_class,levels(factor(set$attack_class))[c(2,1,3,4,5)])
+
+#partititioning Data into edx and validation sets
+set.seed(1, sample.kind="Rounding")
+validation_index_edx <- createDataPartition(y = set$attack_class, times = 1, p = 0.1, list = FALSE)
+edx_set <- set[-validation_index_edx,]
+validation_set <- set[validation_index_edx,]
+
+
+```
+
+
+# Data Preparation
+
+In this stafe, the Train and Test sets are combined and the following changes are made it:
+
+1. For the first goal, a new column: "detect" is created with either of two entires: 'normal' or 'abnormal'. All attacks other than 'normal' will be categorized as 'abnormal'
+
+2. For the second goal, which is to classify the type of attack, a new column "attack_class" is created, which takes in one of 5 values: a) DoS b) Probe c) R2L d) U2R or e) normal. The entry in the "attack_class" column will be dependent on the attack name in the "attack" column: 
+
+a) DoS attack class encomposses the following attack types: back, land, neptune, pod, smurf, teardrop, apache2, udpstorm, processtable and worm.
+
+b) Probe attack class encomposses the following attack types: satan, ipsweep, nmap, portsweep, mscan, saint
+
+c) R2L attack class encomposses the following attack types: guess_passwd, ftp_write, imap, phf, multihop, warezmaster, warezclient, spy, xloc, xsnoop, snmpguess, snmpgetattack, httptunnel, sendmail, named
+
+d) U2R attack class encomposses the following attack types: buffer_overflow, loadmodule, rootkit, perl, sqlattack, xterm, ps
+
+After these changes to the dataset, the entire set is split into 'edx_set' and 'validation_set' using the'createDataPartition' function to ensure even distrubition of different attack types in the ratio 8:2
+
+Only the edx_set will be used for training and developing the model.
+
+
+# Data Description
+
+A brief decription of each of the attack classes:
+
+a) DoS (Denial of service) is a attack category in which the victim’s resources are depleted, thereby making it unable to handle legitimate requests
+
+b) Probe: The objective of the attacks under this class is to gain information about the remote victim e.g. port scanning
+
+c) R2L: In unauthorized access from a remote machine (R2L), the attacker intrudes into a remote machine and gains local access of the victim machine.
+
+d) U2R (User to Root): In the attacks under this class, an attacker uses a normal account to login into a victim system and tries to gain root/administrator privileges by exploiting some vulnerability in the victim 
+
+
+The features that can be used for making predictions and their descriptions:
+
+1. Duration: Length of time duration of the connection
+
+2. Protocol_type: Protocol used in the connection (TCP, UPD or ICMP)
+
+3. Service: Destination network service used
+
+4. Flag: Status of the connection. Different flags:
+          
+          S0: Connection attempt seen, no reply
+          
+          S1: Connection established, not terminated
+          
+          S2: Connection established, initiator has closed their side 
+          
+          S3: Connection established, responder has closed their side
+          
+          SF: Normal establishment and termination. Note that this is the same symbol as for state S1.
+          The two differ by the number of Byte Counts in the summary. S1 has no Byte Counts, while SF
+          has more than one
+          
+          SH: Originator sent a SYN followed by a FIN. Never received a SYN ACK from the responder
+          (hence the connection is “half” open).
+          
+          REJ: Connection attempt rejected
+          
+          RSTO: Connection established, originator aborted (sent a RST)
+          
+          RSTR: Connection established, responder aborted
+          
+          RSTOS0: Originator sent a	SYN	followed by	a	RST. Didnt receive a SYN-ACK from	the	responder
+
+5. Src_bytes: Number of data bytes transferred from source to destination in a single connection
+
+6. Dst_bytes: Number of data bytes transferred from destination to source in a single connection
+
+7. Land: If source and destination IP addresses and port numbers are equal then, this variable takes value 1, else 0
+
+8. Wrong_fragment: Total number of wrong fragments in this connection
+
+9. Urgent: Number of urgent packets in this connection. Urgent packets are packets with the urgent bit activated
+
+CONTENT RELATED FEATURES OF EACH NETWORK CONNECTION VECTOR
+
+10. Hot: Number of "hot‟ indicators in the content such as: entering a system directory, creating programs and executing programs
+
+11. Num_failed _logins: Count of failed login attempts
+
+12. Logged_in Login Status: 1 if successfully logged in; 0 otherwise
+
+13. Num_compromised: Number of "compromised" conditions
+
+14. Root_shell: 1 if root shell is obtained; 0 otherwise
+
+15. Su_attempted: 1 if "su root" command attempted or used; 0 otherwise
+
+16. Num_root: Number of "root" accesses or number of operations performed as a root in the connection
+
+17. Num_file_creations: Number of file creation operations in the connection
+
+18. Num_shells: Number of shell prompts
+
+19. Num_access_files: Number of operations on access control files
+
+20. Num_outbound_cmds: Number of outbound commands in an ftp session
+
+21. Is_hot_login: 1 if the login belongs to the "hot" list i.e. if root or admin; else 0
+
+22. Is_guest_login: 1 if the login is a "guest" login; 0 otherwise
+
+
+TIME RELATED TRAFFIC FEATURES OF EACH NETWORK CONNECTION VECTOR
+
+23. Count: Number of connections to the same destination host as the current connection in the past two seconds
+
+24. Srv_count: Number of connections to the same service (port number) as the current connection in the past two seconds
+
+25. Serror_rate: The percentage of connections that have SYN errors among the connections aggregated in count
+
+26. Srv_serror_rate: The percentage of connections that have SYN errors among the connections aggregated in srv_count
+
+27. Rerror_rate: The percentage of connections that have REJ errors among the connections aggregated in count
+
+28. Srv_rerror_rate: The percentage of connections that have REJ errors among the connections aggregated in srv_count
+
+29. Same_srv_rate: The percentage of connections to the same service, among the connections aggregated in count
+
+30. Diff_srv_rate: The percentage of connections to different services, among the connections aggregated in count
+
+31. Srv_diff_host_rate: The percentage of connections to different destination machines among the connections aggregated in srv_count
+
+
+HOST BASED TRAFFIC FEATURES
+
+32. Dst_host_count: Number of connections that have the same destination host IP address
+
+33. Dst_host_srv_count: Number of connections that have the same port number
+
+34. Dst_host_same_srv_rate: The percentage of connections to the same service, among the connections aggregated in dst_host_count
+
+35. Dst_host_diff_srv_rate: The percentage of connections to different services, among the connections aggregated in dst_host_count
+
+36. Dst_host_same_src_port_rate: The percentage of connections to the same source port, among the connections aggregated in dst_host_srv_count
+
+37. Dst_host_srv_diff_host_rate: The percentage of connections to different destination machines, among the connections aggregated in dst_host_srv_count
+
+38. Dst_host_serror_rate: The percentage of connections that have SYN errors among the connections aggregated in dst_host_count
+
+39. Dst_host_srv_serror_rate: The percent of connections that have SYN errors among the connections aggregated in dst_host_srv_count
+
+40. Dst_host_rerror_rate: The percentage of connections that have REJ errors among the connections aggregated in dst_host_count
+
+41. Dst_host_srv_rerror_rate: The percentage of connections that have REJ errors among the connections aggregated in dst_host_srv_count
+
+# Data Cleaning
+
+
+The data given in the edx dataset is already in tidy format (as seen below):
+
+
+```{r Data_Cleaning, echo=FALSE}
+head(edx_set[1:10], 6L) %>% knitr::kable()
+head(edx_set[11:17], 6L) %>% knitr::kable()
+head(edx_set[18:23], 5L) %>% knitr::kable()
+head(edx_set[24:30], 5L) %>% knitr::kable()
+head(edx_set[31:34], 5L) %>% knitr::kable()
+head(edx_set[35:38], 5L) %>% knitr::kable()
+head(edx_set[39:44], 5L) %>% knitr::kable()
+```
+
+The dimensions of the dataset: 
+
+```{r dimensions, echo=FALSE }
+c(Rows = nrow(edx_set), Columns = ncol(edx_set))
+```
+
+From the plots below, we can see that there are no missing values in any of the columns or rows:
+
+```{r missing, echo=FALSE, echo=FALSE, fig.width=3.5, fig.height=3.75}
+#Showing percenetages of missing values for each row
+plot_missing(edx_set[1:11])
+plot_missing(edx_set[12:22])
+```
+
+```{r missing_1, echo=FALSE, echo=FALSE, fig.width=3.5, fig.height=3.75}
+plot_missing(edx_set[23:33]) 
+plot_missing(edx_set[34:44])
+```
+
+\pagebreak
+
+# Data Analysis and Visualisation
+
+Using the summary function to quantitaveley describe all the features in the dataset:
+
+```{r Data_Partition, message=FALSE, warning=FALSE, echo=FALSE}
+summary(edx_set)
+```
+
+It is interesting to note that more that 75% of the entries is '0' in over 16 numerical columns: 'duration', 'wrong_fragment', 'urgent', 'hot', 'num_failed_logins', 'num_compromised', 'su_attempted', 'num_root', 'num_file_creations', 'num_shells', 'num_access_files', 'rerror_rate', 'srv_rerror_rate', 'srv_diff_host_rate', 'dst_host_rerror_rate', 'dst_host_srv_rerror_rate'
+
+There are also more data points for normal networks than for abnormal ones. Amongst the data points for abnormal networks, DoS attack makes up the highest proportion, far exceeding the rest of the attack classes. Infact, the number of data points for DoS attacks are higher than the rest of the attack classes combined. U2R class has only 107 data points. The attack 'neptune' makes up close to 90% of the DoS type attacks.  
+
+From the summary of the dataset, we can also see that the column: num_outbound_cmds has the number '0' as the value for all entries. Since this value is constant, we can remove this column entirely.
+
+```{r Remove_column, message=FALSE, warning=FALSE }
+edx_set <- edx_set[,-20]
+
+```
+
+
+```{r Data_separation, include=FALSE}
+#Seperating out numerical and categorical data
+num_edx <- as.data.frame(edx_set[,sapply(edx_set, is.numeric)])
+
+cat_edx <- as.data.frame(edx_set[,!sapply(edx_set, is.numeric)])%>%
+  select(-c(attack, detect, attack_class))
+
+edx <- edx_set %>% select(-c(attack, detect, attack_class))
+
+```
+
+## Categorical Data
+
+Contingecy tables and bar plots will be used to perform Data Analaysis and visualisation of Categorical features. For categorical features that can take up more than two categories, the contingency table will be used to perform Correspondance Analysis. The Biplots from the Corresponance Analysis will be used to determine the affinities between the attack types and the categorical feature.
+
+```{r Category_EDA_1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=3}
+cat_anomaly_attack <- data.frame(cat_edx,attack=edx_set$detect)
+cat_classify_attack <- data.frame(cat_edx,attack=edx_set$attack_class)
+
+options(digits=2, scipen=999)
+col_names <- colnames(cat_edx)
+col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+mean_abnormal <- round(mean(cat_anomaly_attack$attack=="abnormal"),2)
+
+    i= 1
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  
+    if(length(levels(cat_edx[,i]))> 2) {
+    #Plotting Correspondance Biplots if Numerof categories for a column is greater than 2
+    res.ca <- CA(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack)), graph = FALSE)
+    print(fviz_ca_biplot(res.ca, repel = TRUE))
+    
+    
+    
+  }
+  a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Tot_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+  
+
+
+1. Protocol Type: ICMP protocol seems most vulnerable to network attacks with only about 15% of the entries that are normal. It is interesting to note that a far greater proportion (close to 50%) of tcp entries seem to be abnormal as compared to udp (only around 20%), even though theoretically TCP is a bit more reliable than UDP. TCP, on account of being the most reliable, is also the most used protocol.
+From the Correspondence Analysis Biplot, we can observe that Probe type attack is closely associated to ICMP protocol. We can also see this from the contingency table, where 31% of the Probe attacks where when protocol type was ICMP, even though ICMP protocol accounts for only about 6.3% of the protocols in the entire dataset.
+We can also observe that U2R and DoS type attacks are most closely associated with TCP. R2L attack is closely associated to TCP, although it also has some association to UDP.
+
+
+```{r Category_EDA_2, message=FALSE, warning=FALSE, echo=FALSE, fig.align='center', fig.width=6, fig.height=4}
+    i= 2
+    
+
+    label_data <- data.frame(id=(1:length(unique(edx_set$service))))
+number_of_bar <- length(unique(edx_set$service))
+angle <-  90 - 360 * (label_data$id-0.5) /number_of_bar
+
+label_data$individual <- cat_anomaly_attack %>% group_by(service) %>% 
+  summarise(value=n()) %>% pull(service)
+label_data$value <- cat_anomaly_attack %>% group_by(service) %>%
+  summarise(value=n()) %>% pull(value)
+label_data$hjust<-ifelse( angle < -90, 1, 0)
+label_data$angle<-ifelse(angle < -90, angle+180, angle)
+
+print(cat_anomaly_attack %>% ggplot(aes(service, fill = attack)) +
+        geom_bar(position = "fill")  +
+        geom_hline(aes(yintercept = mean_abnormal, linetype = "Proportion of Normal in Dataset"), color = "black", size = 1) +
+        coord_polar(start = 0) + ylim(-0.35,1.25) + theme_minimal() +
+    theme(
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.grid = element_blank(),
+        plot.margin = unit(rep(0,4), "cm")      # Adjust the margin to make in sort labels are not truncated!
+    ) +
+    geom_text(data=label_data, aes(x=id, y=1.01, label=individual, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=3.5, angle= label_data$angle, inherit.aes = FALSE ) )
+
+
+   
+```
+
+```{r Category_EDA_2.1, message=FALSE, warning=FALSE, echo=FALSE, fig.align='center', fig.width=6, fig.height=4}
+
+
+    res.ca <- CA(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack)), graph = FALSE)
+    print(fviz_ca_biplot(res.ca, repel = TRUE))
+  
+
+```
+
+
+2. Service: From the circular barplot and CA -Biplot, it is clear that service types: tftp_u, urh_i, domain_u, smtp, http, urp_i. ntp_u, IRC, red_i and X11 are almost always normal.
+Entries with service types: ftp_data and ftp have moderate amounts of abnormalities, with most of them associated with R2L or U2R attack classes. Pop_3 is another service which is almost always associated with either R2L or U2R. Eco_i, aol, pm_dump, http_8001 and harvest service types are almost always related to Probe type attack. Telnet service has close associations with U2R, R2L and DoS attack classes. The rest of the service types are all heavily linked to DoS attack class.
+
+
+```{r Category_EDA_3, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.8, fig.height=3}
+    i= 3
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  
+    if(length(levels(cat_edx[,i]))> 2) {
+    
+    res.ca <- CA(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack)), graph = FALSE)
+    print(fviz_ca_biplot(res.ca, repel = TRUE))
+  }
+   
+```
+
+
+3. Flag: Flag types S0, SH and RSTOS0 are almost always associated with abnormality. 
+DoS type attack class has high associations with flags S0, S3, RSTO and REJ. These flags are all error flags associated with a lack of connection or a sudden termination of connection. Thereby, it makes sense that these flags are all associated with the DoS attack class.
+SH, RSTOS0 and RSTR are flags typically associated to Probe attack class. In these three flags, a SYN is sent by the originator, however a SYN-ACK is not sent back by the responder (in the case of SH and RSTOS0) or the Responder sends a RST (in the case of RSTR). All these are tell-tale signs of a Probe type attack.
+SF, S2 and S1 flags are equally associated with Normal, R2L and U2R. These three flags signify a normal connection state value, which means R2L and U2R attack class cannot be differentiated from Normal networks using connection state flags in isolation.
+
+```{r Category_EDA_4, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=2.5, fig.align='center'}
+    
+    i= 4
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    
+    a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Total_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+
+
+
+4. Land: When land is 1, i.e. when the connection is from/to the same host/port, around 79% of the time, the network attack class is DoS, even though DoS attack class accounts for only 36% of the network attack entries in the entire dataset. The remaining 21% of the time, the network is normal. Probe, R2L and U2R attacks never seem to occur when Land is 1
+
+```{r Category_EDA_5, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=2.5, fig.align='center'}
+    options(digits=2)
+    i= 5
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    
+    a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Total_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+
+5. Logged In:  The chances of a normal network when not logged is low at 28% (even though 60% of the dataset has a normal network). When successfully logged-in i.e. when 'logged_in' is 1, the overall chances of a normal network are higher at 92%. However, the chances of a U2R and R2L attack are considerably higher when logged in as compared to when not logged in. This makes sense since, both U2R and R2L attacks are related to unauthorized access. DoS and Probe attack classes on the other hand hardly ever occur when ‘logged_in’ is 1 (at 3.9% and 1.6% respectively even though 40% of the dataset has logged_in = 1).
+
+
+```{r Category_EDA_6, echo=FALSE, fig.align='center', fig.height=2.5, fig.width=3, message=FALSE, warning=FALSE}
+    options(digits=2)
+    i= 6
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    
+    a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Total_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+
+
+6. Root Shell: The proportion of entries for which root_shell is 1 i.e. root shell access is obtained is quite low (only 0.15%). For entries with root_shell = 1, the percentage of normal entries are higher at 69% as compared to 52% for the entire dataset. However, the proportion of U2R attack also increases exponentially when root_shell is 1. The proportion of R2L attacks increase by over 2.5 times as well, while the proportion of DoS and Probe attacks drop to 0.
+
+
+```{r Category_EDA_7, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=2.5, fig.align='center'}
+    options(digits=2)
+    i= 7
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    
+    a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Total_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+
+
+7. Hot Login: The proportion of entries for which ‘is_hot_login’ is 1 i.e. the login belongs to hot list is again quite low (only 0.01%). For entries where the login belongs to the hot list, the proportion of abnormalities increase to over 90% when only 48% of the entire dataset are classified as abnormal. The abnormalities that cause this increase are U2R and R2L attack classes that shoot up exponentially as well. This is again because both U2R and R2L attacks are related to unauthorized access. DoS and Probe attacks are at 0, when the login is from a hot list.
+
+```{r Category_EDA_8, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3, fig.height=2.5, fig.align='center'}
+    options(digits=2)
+    i= 8
+  
+    cat_anomaly_attack %>% ggplot(aes(cat_edx[,i], fill = attack)) + geom_bar(position = "fill") +
+    geom_hline(aes(yintercept = mean_abnormal, linetype ="Prop of Normal"), color = "black", size = 1) +
+    xlab(col_names[i]) + ylab("Proportion") + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+    
+    a<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 1)*100)  %>% spread(Var2, Freq)
+    setnames(a, old = "Var1", new = col_names[i], skip_absent=TRUE)
+    colnames(a) <- c(col_names[i], colnames(a)[-1])
+
+    b<-cat_classify_attack %>% group_by(attack) %>% summarise(n=n()) %>% mutate(prop = n/sum(n)*100) %>% select(-n) %>% spread(attack, prop) %>% mutate(m="Tot_Prop")
+    setnames(b, old = "m", new = col_names[i])
+
+    t1 <- rbind.data.frame(a,b)
+    
+    col_names1 <- c(quo(protocol_type),quo(service),quo(flag), quo(land), quo(logged_in), quo(root_shell), quo(is_hot_login), quo(is_guest_login), quo(last_flag), quo(attack))
+
+    c<- as.data.frame(prop.table(table(cat_classify_attack[,i], cat_classify_attack$attack), margin = 2)*100)  %>% spread(Var2, Freq)
+    setnames(c, old = "Var1", new = col_names[i])
+
+    d <- cat_classify_attack %>% group_by(!! col_names1[[i]]) %>% summarise(n=n()) %>% mutate(Total_Prop = n/sum(n)*100) %>% select(-n)
+
+    t2 <- left_join(c,d)
+    
+ 
+```
+
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+
+
+8. Guest Login: When ‘is_guest_login’ is 1, The proportion of R2L attacks shoot up, while the proportions of DoS, Probe and U2R attacks plunge. The proportion of normal networks remain approximately the same.
+
+
+## Numerical Data
+
+Boxplots will be used to examine the distribution of numerical features for different attack classes and network abnormalities. For some of the plots, a Square Root transormation is done on the y-axis to provide better visual clarity.
+
+```{r Numerical_EDA_1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=2}
+a<- c("black",rep(c("blue"), times=11), rep(c("red"), times=6), rep(c("green"), times=15),rep(c("violet"), times=7))
+num_anomaly_attack <- data.frame(num_edx,attack=edx_set$detect)
+abnormal <- num_anomaly_attack %>% filter(attack=="abnormal")
+normal <- num_anomaly_attack %>% filter(attack=="normal")
+
+num_classify_attack <- data.frame(num_edx,attack=edx_set$attack_class)
+dos <- num_classify_attack %>% filter(attack=="dos")
+normal1 <- num_classify_attack %>% filter(attack=="normal")
+probe <- num_classify_attack %>% filter(attack=="probe")
+u2r <- num_classify_attack %>% filter(attack=="u2r")
+r2l <- num_classify_attack %>% filter(attack=="r2l")
+col_names <- colnames(num_classify_attack)
+
+num_edx_attack <- data.frame(num_edx,attack=edx_set$attack)
+normal2 <- num_edx_attack %>% filter(attack=="normal")
+back <- num_edx_attack %>% filter(attack=="back")
+land <- num_edx_attack %>% filter(attack=="land")
+neptune <- num_edx_attack %>% filter(attack=="neptune")
+pod <- num_edx_attack %>% filter(attack=="pod")
+smurf <- num_edx_attack %>% filter(attack=="smurf")
+teardrop <- num_edx_attack %>% filter(attack=="teardrop")
+apache2 <- num_edx_attack %>% filter(attack=="apache2")
+udpstorm <- num_edx_attack %>% filter(attack=="udpstorm")
+processtable <- num_edx_attack %>% filter(attack=="processtable")
+worm <- num_edx_attack %>% filter(attack=="worm")
+mailbomb <- num_edx_attack %>% filter(attack=="mailbomb")
+satan <- num_edx_attack %>% filter(attack=="satan")
+ipsweep <- num_edx_attack %>% filter(attack=="ipsweep")
+nmap <- num_edx_attack %>% filter(attack=="nmap")
+portsweep <- num_edx_attack %>% filter(attack=="portsweep")
+mscan <- num_edx_attack %>% filter(attack=="mscan")
+saint <- num_edx_attack %>% filter(attack=="saint")
+guess_passwd <- num_edx_attack %>% filter(attack=="guess_passwd")
+ftp_write <- num_edx_attack %>% filter(attack=="ftp_write")
+imap <- num_edx_attack %>% filter(attack=="imap")
+phf <- num_edx_attack %>% filter(attack=="phf")
+multihop <- num_edx_attack %>% filter(attack=="multihop")
+warezmaster <- num_edx_attack %>% filter(attack=="warezmaster")
+warezclient <- num_edx_attack %>% filter(attack=="warezclient")
+spy <- num_edx_attack %>% filter(attack=="spy")
+xlock <- num_edx_attack %>% filter(attack=="xlock")
+xsnoop <- num_edx_attack %>% filter(attack=="xsnoop")
+snmpguess <- num_edx_attack %>% filter(attack=="snmpguess")
+snmpgetattack <- num_edx_attack %>% filter(attack=="snmpgetattack")
+httptunnel <- num_edx_attack %>% filter(attack=="httptunnel")
+sendmail <- num_edx_attack %>% filter(attack=="sendmail")
+named <- num_edx_attack %>% filter(attack=="named")
+buffer_overflow <- num_edx_attack %>% filter(attack=="buffer_overflow")
+loadmodule <- num_edx_attack %>% filter(attack=="loadmodule")
+rootkit <- num_edx_attack %>% filter(attack=="rootkit")
+perl <- num_edx_attack %>% filter(attack=="perl")
+sqlattack <- num_edx_attack %>% filter(attack=="sqlattack")
+xterm <- num_edx_attack %>% filter(attack=="xterm")
+ps <- num_edx_attack %>% filter(attack=="ps")
+col_names <- colnames(num_classify_attack)
+
+
+col_names <- colnames(num_anomaly_attack)
+
+i = 1
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_1.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+     num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = c(0, 40000)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+
+```
+
+
+1.	Duration: We can see that U2R attack class tends to have a higher duration in general as compared to others. When we further break down the attack classes to specific attacks, we observe that the attack ‘processtable’ under the DoS attack class seems to have the highest median, followed by ‘apache2’. Portsweep attack under the Probe class has a wide distibution. 
+
+```{r Numerical_EDA_2, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=2}
+
+i = 2
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_2.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+     num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = c(0, 5200000)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+
+```
+
+2.	Source Bytes: From the boxplots, we can see that normal networks seems to have higher source bytes in general. However, when we break down the abnormalities by attack classes, we observe that the median for U2R attack class is slightly higher than that for normal networks. U2R attacks also have a large Inter-Quartile range, with the 3rd quartile exceeding 2000 bytes. R2L attacks also have higher medians compared to Probe and DoS. This makes sense because, both, R2L and U2R attacks are related to unauthorized access. On further breaking down the attack classes to individual attacks, we that ‘xlock’ attack under the R2L has a high median with Q3 stretching all the way till 5 million bytes. DoS attacks – ‘back’ and ‘apache2’ have the highest medians amongst all other attacks.
+
+
+```{r Numerical_EDA_3, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=2}
+
+i = 3
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_3.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+3.	Destination Bytes: Normal networks again seem to have higher values of Destination Bytes. When broken down by attack classes, we observe U2R attack class having higher overall values, followed by normal networks and R2L. When we further break down the classes to individual attacks, we can see most of the attack types under the R2L and U2R having high values. This is again because R2L and U2R attacks are related to unauthorized access. Back and Worm attacks under the DoS class also have high values.
+
+
+```{r Numerical_EDA_4, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=2}
+
+i = 4
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_4.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+4.	Wrong Fragment: Pod (Ping of Death) and Teardrop attacks under the DoS attack class are the only attacks that have high values of Wrong Fragments. Teardrop attack involves sending fragmented packets to a target machine. Since the machine receiving such packets cannot reassemble them, the packets overlap one another, crashing the device. In PoD attack, attacker attempts to crash, destabilize, or freeze the targeted computer or service by sending malformed or oversized packets using a simple ping command.
+
+
+```{r Numerical_EDA_5, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=2}
+
+i = 5
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_5.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+5.	Urgent: The only attacks that seem to be related to values greater than 0 are ftp write, sqlattack and xterm. In all these three attacks, the urgent bit is used in the TCP segment.
+
+
+```{r Numerical_EDA_6, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 6
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_6.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+6.	Hot: The number of hot indicators, seem to high is u2R attacks mainly. On breading down to individual attack types, we see that some of the R2L attacks have high hot indicators as well. Although the Warezclient attack under the R2L class has a median of 0, it has a high 3rd quartile value, exceeding 25.
+
+
+```{r Numerical_EDA_7, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 7
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_7.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+7.	Number of Failed Logins: Guess Password attack is the only attack that has relatively high values of ‘num_failed_logins’, although its median is 0 just like all the other attacks.
+
+
+```{r Numerical_EDA_8, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 8
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_8.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+8.	Number Compromised: The number of compromised conditions seems to be higher in U2R attacks overall, which can be seen when we break down the attack classes to individual types. Back attack under the DoS class almost always has 1 - 2 number of compromised conditions
+
+
+```{r Numerical_EDA_9, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 9
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_9.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+9.	Super User Command attempt: Spy attack under the R2L attack class seems to be the only attack where the Super User command is attempted with a median rate of 0.5
+
+
+```{r Numerical_EDA_10, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 10
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_10.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+10.	Number of Root accesses: Compared to other attack classes, U2R attack classes seem to have generally higher number of root accesses. Under the U2R class – Perl, SQL attack, Xterm and PS attacks have higher number of operations performed as a root. Xsnoop and Sendmail attacks under the R2L attacks also seem to have relatively high number of root accesses
+
+
+
+```{r Numerical_EDA_11, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 11
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_11.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+11.	Number of File Creations: U2R attack class generally has higher number of file creations compared to other attack classes. Almost all the attack types under this class have generally higher number of file creations associated to them, although, Rootkit and Xterm attacks have a median of 0. SQL attack and Perl attack have the highest medians at 3 and 2 respectively. FTP Write, multihop and Spy attacks under the R2L class are also somewhat associated to file creations.
+
+
+```{r Numerical_EDA_12, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 12
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_12.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+
+12.	Number of Shell prompts: Perl and SQL attacks under the U2R class have the highest medians at 1 shell prompt. Although, Loadmodule and PS attacks have a median of 0, they have relatively higher 3rd quartile value of 2 and 1 respectively. Spy attack under R2L has the 2nd and 3rd quartiles at 0.25 and 0.75 respectively.
+
+
+
+```{r Numerical_EDA_13, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 13
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_13.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=3}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+13.	Number of operations on access control files: SQL attack under the U2R class and PHF attack under the R2L attack class almost always have 1 Operation on the access control files. FTP Write and Sendmail attacks have their median at 0. However, they do have operations on access control files some of the time. 
+
+TIME RELATED TRAFFIC FEATURES: 
+
+```{r Numerical_EDA_14, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 14
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_14.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+14. Count: Abnormal networks have, in general, higher values of count i.e higher number of connections to the same destination host as the current connection in the past two seconds. DoS attack class, in general, has higher values of count compared to other classes, which makes sense, because this attack class generally involves flooding the targeted machine or resource with superfluous requests. Apart form the DoS class, we see that SATAN and SAINT attacks under the Probe class also have high values of count. In both, SATAN and SAINT, every live system on a network is scanned, launching a set of probes designed to detect anything that could allow an attacker to gain unauthorized access
+
+```{r Numerical_EDA_15, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 15
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_15.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+15. Service Count: Both U2R and R2L attacks, in general have lower values of Srv_count i.e lower number of connections to the same service (port number) as the current connection in the past two seconds as compared to other attacks and normal networks. However, the exceptions to this from the R2L class are Imap, snmp guess, snmp get attack and Warezclient attacks. Smurf attack has the highest median at around 450. Smurf is DoS type attack, in which large numbers of ICMP packets with the intended victim’s spoofed source IP are broadcast to a network using an IP broadcast address. Teardrop, Apache2 and Neptune attacks under the DoS class and IP-Sweep, NMAP and MSCAN under the Probe class generally have high values of srv_count.
+
+
+```{r Numerical_EDA_16, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+for (i in 16:17){
+  
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  
+
+}
+ 
+```
+
+16. Serror_rate and 17. Srv_serror_rate i.e the percentage of connections that have SYN errors among the connections aggregated in count and srv_count respectively seem to be correlated. The Median for abnormalities and DoS attack class are at 100%
+
+
+```{r Numerical_EDA_18, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+for (i in 18:19){
+  
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  
+
+}
+ 
+```
+
+18.Rerror_rate and 19. Srv_rate i.e the percentage of connections that have 'REJ' errors among the connections aggregated in count and srv_count also seem to be somewhat correlated, with the third quartile exceeding 0.2 for abnormal connections and equal to 1 for Probe attack class
+
+
+```{r Numerical_EDA_20, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=20
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  
+
+ 
+```
+
+
+20. Same_srv_rate i.e the percentage of connections to the same service is almost always 100% for Normal networks, R2L attacks and U2R attacks. DoS attacks generally have lower values.
+
+```{r Numerical_EDA_21, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=21
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  
+
+ 
+```
+
+21. Diff_Srv_rate i.e the proportion of connections to different services is generally higher for abnormal connections with a median at over 5%. Among the attacks, Probe attacks have the highest IQR, with the 3rd Quartile at 100%
+
+```{r Numerical_EDA_22, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=22
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  
+
+ 
+```
+
+22. Srv_diff_host_rate i.e the proportion of connections to different hosts seems to be most of the times higher for Normal connections, although its median is at 0. Probe attack class has an IQR of 100%, while with rest of attacks are almost always 0
+
+
+```{r Numerical_EDA_23, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 23
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0) {
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  }else {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+
+```{r Numerical_EDA_23.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+HOST BASED TRAFFIC FEATURES: 
+
+23. Dst_host_count: The number of connections having the same destination host IP address is high (almost always equal to 2^8  -1 = 255, which is the max number of IPs possible in a /8 network) for abnormal connections. It is almost always high for most of the DoS attacks expect land. Spy, Xsnoop, Snmpguess and Phf attacks under the R2L class and SATAN, Portsweep attacks under the Probe class also have Dst_host_count almost always equal to 255.
+
+```{r Numerical_EDA_24, message=FALSE, warning=FALSE, echo=FALSE, fig.width=4, fig.height=1.75}
+
+i = 24
+
+  stats_abnormal<- boxplot.stats(abnormal[,i])$stats[5]
+  stats_normal<- boxplot.stats(normal[,i])$stats[5]
+  
+  y_lim=max(stats_abnormal, stats_normal, na.rm = TRUE)
+  
+  if (y_lim !=0){
+  num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim*c(0, 1))
+  } else  {num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i])
+    
+  }
+  
+  stats_dos<- boxplot.stats(dos[,i])$stats[5]
+  stats_normal1<- boxplot.stats(normal1[,i])$stats[5]
+  stats_probe<- boxplot.stats(probe[,i])$stats[5]
+  stats_u2r<- boxplot.stats(u2r[,i])$stats[5]
+  stats_r2l<- boxplot.stats(r2l[,i])$stats[5]
+  
+  y_lim1=max(stats_dos, stats_normal1, stats_probe, stats_u2r, stats_r2l)
+  
+  if (y_lim1 !=0){
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim1*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+  } else {
+    print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i], colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+            ylab(col_names[i]) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")))
+    
+    
+  }
+  
+  stats_normal2<- boxplot.stats(normal2[,i])$stats[5]
+  stats_back<- boxplot.stats(back[,i])$stats[5]
+  stats_land<- boxplot.stats(land[,i])$stats[5]
+  stats_neptune<- boxplot.stats(neptune[,i])$stats[5]
+  stats_pod<- boxplot.stats(pod[,i])$stats[5]
+  stats_smurf<- boxplot.stats(smurf[,i])$stats[5]
+  stats_teardrop<- boxplot.stats(teardrop[,i])$stats[5]
+  stats_apache2<- boxplot.stats(apache2[,i])$stats[5]
+  stats_udpstorm<- boxplot.stats(udpstorm[,i])$stats[5]
+  stats_processtable<- boxplot.stats(processtable[,i])$stats[5]
+  stats_worm<- boxplot.stats(worm[,i])$stats[5]
+  stats_mailbomb<- boxplot.stats(mailbomb[,i])$stats[5]
+  stats_satan<- boxplot.stats(satan[,i])$stats[5]
+  stats_ipsweep<- boxplot.stats(ipsweep[,i])$stats[5]
+  stats_nmap<- boxplot.stats(nmap[,i])$stats[5]
+  stats_portsweep<- boxplot.stats(portsweep[,i])$stats[5]
+  stats_mscan<- boxplot.stats(mscan[,i])$stats[5]
+  stats_saint<- boxplot.stats(saint[,i])$stats[5]
+  stats_guess_passwd<- boxplot.stats(guess_passwd[,i])$stats[5]
+  stats_ftp_write<- boxplot.stats(ftp_write[,i])$stats[5]
+  stats_imap<- boxplot.stats(imap[,i])$stats[5]
+  stats_phf<- boxplot.stats(phf[,i])$stats[5]
+  stats_multihop<- boxplot.stats(multihop[,i])$stats[5]
+  stats_warezmaster<- boxplot.stats(warezmaster[,i])$stats[5]
+  stats_warezclient<- boxplot.stats(warezclient[,i])$stats[5]
+  stats_spy<- boxplot.stats(spy[,i])$stats[5]
+  stats_xlock<- boxplot.stats(xlock[,i])$stats[5]
+  stats_xsnoop<- boxplot.stats(xsnoop[,i])$stats[5]
+  stats_snmpguess<- boxplot.stats(snmpguess[,i])$stats[5]
+  stats_snmpgetattack<- boxplot.stats(snmpgetattack[,i])$stats[5]
+  stats_httptunnel<- boxplot.stats(httptunnel[,i])$stats[5]
+  stats_sendmail<- boxplot.stats(sendmail[,i])$stats[5]
+  stats_named<- boxplot.stats(named[,i])$stats[5]
+  stats_buffer_overflow<- boxplot.stats(buffer_overflow[,i])$stats[5]
+  stats_loadmodule<- boxplot.stats(loadmodule[,i])$stats[5]
+  stats_rootkit<- boxplot.stats(rootkit[,i])$stats[5]
+  stats_perl<- boxplot.stats(perl[,i])$stats[5]
+  stats_sqlattack<- boxplot.stats(sqlattack[,i])$stats[5]
+  stats_xterm<- boxplot.stats(xterm[,i])$stats[5]
+  stats_ps<- boxplot.stats(ps[,i])$stats[5]
+  
+  
+  y_lim2=max(stats_normal2,stats_back,stats_land,stats_neptune,stats_pod,stats_smurf,
+  stats_teardrop,stats_apache2,stats_udpstorm,stats_processtable,stats_worm,stats_mailbomb,
+  stats_satan,stats_ipsweep,stats_nmap,stats_portsweep,stats_mscan,stats_saint,
+  stats_guess_passwd,stats_ftp_write,stats_imap,stats_phf,stats_multihop,
+  stats_warezmaster,stats_warezclient,stats_spy,stats_xlock,stats_xsnoop,stats_snmpguess,
+  stats_snmpgetattack,stats_httptunnel,stats_sendmail,stats_named,stats_buffer_overflow,stats_loadmodule,
+  stats_rootkit,stats_perl,stats_sqlattack,stats_xterm,stats_ps, na.rm = TRUE)
+  
+ 
+```
+
+```{r Numerical_EDA_24.1, message=FALSE, warning=FALSE, echo=FALSE, fig.width=9, fig.height=2.75}
+  num1_edx_attack <- data.frame(num_edx_attack, class = num_classify_attack$attack)
+  
+ 
+  if (y_lim2 >400) {
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) + scale_y_continuous(trans = 'sqrt') + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else if (y_lim2 != 0){
+  
+  num1_edx_attack %>%
+          ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + stat_boxplot(geom ='errorbar') +
+          ylab(col_names[i]) + coord_cartesian(ylim = y_lim2*c(0, 1)) +
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+  
+  }  else  {
+    
+    num1_edx_attack %>% 
+      ggplot(aes(attack,num_edx_attack[,i],  colour = class)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+      scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, colour = a))
+    
+  }
+  
+
+```
+
+24. Dst_host_srv_count: The number of connections having the same port number is almost always high for normal network and considerably lower for abnormal networks. U2R and DoS attacks almost always have very low values. Again, because of the maximum number of IP possible in a /8 network is 255, the maximum value for Dst_host_srv_count is capped at 255
+
+
+
+
+
+```{r Numerical_EDA_25, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=25
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=8)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+          theme(axis.title.y = element_text(size=8)))
+ 
+```
+
+25. Dst_host_same_srv_rate (The percentage of connections to the same service, among the
+connections in dst_host_count) is high for most normal networks as well as to R2L and U2R attack classes. DoS attack class, however, remains closer to 0. 
+
+```{r Numerical_EDA_26, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=26
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=7)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) +
+           theme(axis.title.y = element_text(size=7)))
+  
+
+ 
+```
+
+26. Dst_host_diff_srv_rate (The percentage of connections to different services, among the connections aggregated in dst_host_count) is low at around 0 for most normal networks, R2L , DoS and U2R attack classes. Probe attacks have a larger median with a larger range
+
+```{r Numerical_EDA_27, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=27
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=8)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) + 
+          theme(axis.title.y = element_text(size=8)))
+  
+
+ 
+```
+
+27. Dst_host_same_src_port_rate i.e the percentage of connections to the same source port, among the connections aggregated in dst_host_srv_count is almost always low for DoS attack class. It is highest in general for Probe attacks.
+
+
+```{r Numerical_EDA_28, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+i=28
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=8)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) + 
+          theme(axis.title.y = element_text(size=8)))
+  
+
+ 
+```
+
+28. Dst_host_srv_diff_host_rate i.e the proportion of connections to different destination
+machines, among the connections aggregated in dst_host_srv_count, is almost always zero for attacks: DoS, R2L and U2R as well as Normal networks.  
+
+```{r Numerical_EDA_29, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+for (i in 29:30){
+  
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=8)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) + 
+          theme(axis.title.y = element_text(size=8)))
+  
+
+}
+ 
+```
+
+
+29. Dst_host_serror_rate (percentage of connections that have SYN errors among the connections aggregated in dst_host_count) and 30. Dst_host_srv_s error_rate (percentage of connections that have SYN errors among the connections aggregated in dst_host_srv_count) seem to have a high correlation. Both are almost always 0 for normal networks and all attack classes except for DoS
+
+```{r Numerical_EDA_31, message=FALSE, warning=FALSE, echo=FALSE, fig.width=3.75, fig.height=1.75}
+
+for (i in 31:32){
+  
+  
+  print(num_anomaly_attack %>% ggplot(aes(attack,num_anomaly_attack[,i])) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + theme(axis.title.y = element_text(size=8)))
+  
+  
+  
+  print(num_classify_attack %>% ggplot(aes(attack,num_classify_attack[,i],colour = attack)) + geom_boxplot(outlier.shape=NA) + 
+          ylab(col_names[i]) + 
+          scale_colour_manual(values= c("black","blue","red","green","violet")) + 
+          theme(axis.title.y = element_text(size=8)))
+  
+
+}
+ 
+```
+
+31. Dst_host_rerror_rate (percentage of connections that have REJ errors among the
+connections aggregated in dst_host_count) and 32. Dst_host_srv_rerror_rate (The percentage of connections that have REJ errors among the connections aggregated in dst_host_srv_count) also seem to be heavily correlated, with both attributes being almost always 0 for normal networks and all attack classes except for Probe attack class
+
+\pagebreak
+
+CORRELATION PLOT OF NUMERICAL FEATURES: 
+
+```{r Num_Correlations, message=FALSE, warning=FALSE, echo=FALSE}
+corrplot(cor(as.data.frame(edx_set[,sapply(edx_set, is.numeric)])),method = "color", tl.cex = 0.65)
+```
+
+Looking at the correlation plot for the numerical attributes, we see, as suspected from the boxpots, high postive correlation between pairs: 
+
+1. serror_rate and srv_serror_rate
+2. rerror_rate and srv_rerror_rate
+3. dst_host_serror_rate and dst_host_srv_serror_rate
+4. dst_host_rerror_rate and dst_host_srv_rerror_rate
+    
+In fact, we find that out of the eight attributes listed above;
+        i. serror_rate, srv_serror_rate (1), dst_host_serror_rate and dst_host_srv_serror_rate (3) are all heavily correlated with each other.
+        ii. In the same manner, rerror_rate, srv_rerror_rate (2), dst_host_rerror_rate and dst_host_srv_rerror_rate (4) are all heavily correlated with each other.
+
+We also find high positive correlation between dst_host_same_srv_count and dst_host_same_Srv_rate
+
+Strong negative correlation can be found between:
+
+1. same_srv_rate and serror_rate
+2. same_srv_rate and srv_serror_rate
+3. same_srv_rate and dst_host_srv_serror_rate
+4. same_srv_rate and dst_host_rerror_rate
+
+\pagebreak
+
+# Data Modelling
+
+The edx datasets for anomaly detection and classification are further split into training and test datasets.
+The train set will be the subset used to train different models.
+The test set will be the subset used to test and evaluate the trained models.
+
+```{r Test_Train_sets, message=FALSE, warning=FALSE}
+#Creating Train and Test sets
+set.seed(1, sample.kind="Rounding")
+train_index <- createDataPartition(y = edx_set$attack, times = 1, p = 0.8, list = FALSE)
+train_set <- edx_set[train_index,]
+test_set <- edx_set[-train_index,]
+
+#Filtering out the numerical features
+num_train <- as.data.frame(train_set[,sapply(train_set, is.numeric)])
+num_test <- as.data.frame(test_set[,sapply(test_set, is.numeric)])
+
+#Filtering out the categorical features
+cat_train <- as.data.frame(train_set[,!sapply(train_set, is.numeric)])%>% 
+  select(-c(attack, detect, attack_class))
+cat_test <- as.data.frame(test_set[,!sapply(test_set, is.numeric)])%>%
+  select(-c(attack, detect, attack_class))
+
+```
+
+
+Once the model has been finalized, the edx sets will be used to train the final models and make the final predictions on the validation set.
+
+
+We would be performing principal component analysis to try and reduce the number of dimensions and thereby reducing the computation time. It would also helpful to remove the redundant features.
+
+Before we perform principal component analysis, it is essential to standardize the numerical features, so that the variables with the biggest scales don’t overwhelm the PCA.
+
+
+```{r Data_Standardize, message=FALSE, warning=FALSE}
+# Standardizing numerical data on anomaly and classify datasets
+mean_train <- apply(num_train, 2, function(x){mean(x)})
+sd_train <- apply(num_train, 2, function(x){sd(x)})
+std_features <- apply(num_train,2,function(x){(x-mean(x))/(sd(x))})
+
+```
+
+The 'PCAmix' function under the 'PCAmixdata' package can ne used to perform principal component analysis on a dataset with a mix of qualititaive and quantitative features.
+
+```{r Dimension_Reduction_1, message=FALSE, warning=FALSE}
+# Performing PCA on the the mixed datatypes
+pca_mix<-PCAmixdata::PCAmix(X.quanti=num_edx,X.quali=cat_edx,rename.level=TRUE,graph=FALSE) 
+
+```
+```{r Dimension_Reduction_2, message=FALSE, warning=FALSE, echo=FALSE}
+variance_explained <- pca_mix$eig[,3]
+num_dimensions <- c(1:nrow(pca_mix$eig))
+t1 <- head(pca_mix$eig)
+t2 <- tail(pca_mix$eig)
+```
+```{r results='asis', echo=FALSE}
+    # Setting `results = 'asis'` allows for using Latex within the code chunk
+    cat('\\begin{center}')
+    # `{c c}` Creates a two column table
+    # Use `{c | c}` if you'd like a line between the tables
+    cat('\\begin{tabular}{ c | c }')
+    print(knitr::kable(t1, format = 'latex'))
+    # Separate the two columns with an `&`
+    cat('&')
+    print(knitr::kable(t2, format = 'latex'))
+    cat('\\end{tabular}')
+    cat('\\end{center}')
+```
+```{r Dimension_Reduction_3, message=FALSE, warning=FALSE, echo=FALSE}
+pca_mix$eig[80:85,] %>% knitr::kable()
+```
+
+
+Because of the various levels/factors for each qualitative feature, the total number of Principal Components needed to explain all the variance has increased accordingly to 117. We see that 90% of the variance is explained by the first 82 principal components. Because of this vast number of dimensions needed (more than the number of dimensions in the dataset itself), Eigen-Value Based PCA on all the predictors cannot be used for dimension reduction for this dataset
+
+We can perform Principal Component Analysis via Singular Value Decomposition of the numerical features to try and reduce the number of features.
+
+
+
+```{r Data_Reduction_4, message=FALSE, warning=FALSE}
+# Performing SVD-PCA on the numerical parameters alone on the anomaly dataset
+pc <- prcomp(std_features, center = F, scale. = F)
+var_explained <- cumsum(pc$sdev^2/sum(pc$sdev^2))
+var_explained
+
+```
+
+```{r Data_Reduction_5, message=FALSE, warning=FALSE, fig.width=5, fig.height=4, fig.align='centre', echo=FALSE}
+# Plotting
+plot(var_explained)
+```
+
+We see that around 90% of the variance is explained by the first sixteen principal components. Thus, we can effectively halve the number of numerical features from 32 to 16 principal components.
+
+Just like we’ve obtained PCA components on training set, we’ll get another bunch of components on testing set. We should not combine the train and test set to obtain PCA components of whole data at once. If we combine the train and test set to obtain PCA components of whole data, this would violate the entire assumption of generalization since test data would get ‘leaked’ into the training set. In other words, the test data set would no longer remain ‘unseen’. Also, we should not perform PCA on test and train data sets separately, because, the resultant vectors from train and test PCAs will have different directions ( due to unequal variance). Due to this, we’ll end up comparing data registered on different axes.
+
+The resulting vectors from train and test data should have the same axes. Thereby, we should do exactly the same transformation to the test set as we did to the training set, including the center and scaling feature.
+
+```{r Dimension_Reduction_6, message=FALSE, warning=FALSE}
+#Chosing the first 16 principal components
+train.data <- data.frame(train_set[,!sapply(train_set, is.numeric)], pc$x[,1:16])
+train.data_detect <- train.data %>% select(-c(attack, attack_class))
+train.data_attack_class <- train.data %>% select(-c(attack, detect))
+
+#Selecting only numerical features from the test set
+num_test <- as.data.frame(test_set[,sapply(test_set, is.numeric)])
+
+#Centering and Scaling the test set using the mean and Sd of Train set
+std_features_test <- mapply(function(x,y,z){(x-y)/z},num_test,mean_train,sd_train)
+
+# Predicting the principal components of the numerical features in test set
+test.data <- predict(pc, std_features_test)
+test.data <- data.frame(test_set[,!sapply(test_set, is.numeric)],test.data[,1:16])
+test.data <- test.data %>% select(-c(attack, attack_class, detect))
+
+```
+
+We still have a considerable number of predictors (twenty-four) even after dimension reduction. Since Random Forest and Random Trees are most suited to develop models with high dimensions, both will be used.
+
+## Random Forest
+
+The Ranger function is a fast implementation of random forests, particularly suited to high dimensional data.
+
+### Network Anomaly Detection
+
+Using Random Forest for Network Anomaly Detection:
+
+```{r Random_Forest_detect, message=FALSE, warning=FALSE, results='hide'}
+options(digits=4, scipen=999)
+#Training
+train_rf_detect <- ranger(detect ~ .,
+                          data = train.data_detect)
+
+#Making predictions
+pred_rf_detect <- predict(train_rf_detect, data = test.data)$predictions
+
+#Getting Accuracy
+a1 <- confusionMatrix(pred_rf_detect,
+                      test_set$detect)$overall["Accuracy"]
+
+#Getting Sensitivity
+se1<- confusionMatrix(pred_rf_detect,
+                      test_set$detect)$byClass["Sensitivity"]
+
+#Getting Specificity
+sp1 <- confusionMatrix(pred_rf_detect,
+                       test_set$detect)$byClass["Specificity"]
+```
+```{r Random_Forest_detect_1, message=FALSE, warning=FALSE}
+results_rf_detect <- data_frame(Goal = "Anomaly Detection",
+                                Method = "Random Forest",
+                                Accuracy = a1, Sensitivity = se1, Specificity = sp1)
+
+#Displaying the results
+data.frame(results_rf_detect) %>% knitr::kable()
+```
+
+We get an Accuracy of 99.26%, Sensitivity of 99.39% and Specificity of 99.11%
+
+\pagebreak
+
+### Network Attack Classification
+
+Using Random Forest for Network Anomaly Classification:
+
+```{r Random_Forest_classify, message=FALSE, warning=FALSE, results='hide'}
+#Training
+train_rf_attack_classify <- ranger(attack_class ~ .,
+                                   data = train.data_attack_class)
+
+#Making predictions and getting the Accuracy
+a3 <- confusionMatrix(predict(train_rf_attack_classify, data = test.data)$predictions,
+                      test_set$attack_class)$overall["Accuracy"]
+```
+```{r Random_Forest_classify_1, message=FALSE, warning=FALSE}
+results_rf_classify <- data_frame(Goal = "Attack Classification",
+                                  Method = "Random Forest",
+                                  Accuracy = a3)
+
+#Displaying the results
+data.frame(results_rf_classify) %>% knitr::kable()
+```
+
+We get an Accuracy of 99.23%
+
+## Decision Tree
+
+Rpart package's implementation of the Decision Tree will be used. The default value of the complexity parameter is 0.01. However, a Complexity parameter of 0 will be used for both: Anomaly Detection and Attack Classification to get better performance. 
+
+### Network Anomaly Detection
+
+Using Random Tree for Network Anomaly Detection:
+
+```{r Decision_Tree_detect, message=FALSE, warning=FALSE}
+#Training
+train_rpart_detect <- train(detect ~ ., 
+                        method = "rpart",
+                        tuneGrid = data.frame(cp = 0),
+                        data = train.data_detect)
+
+#Making predictions
+pred_rpart_detect <- predict(train_rpart_detect, test.data)
+
+#Getting Accuracy
+a2 <- confusionMatrix(pred_rpart_detect,
+                      test_set$detect)$overall["Accuracy"]
+
+#Getting Sensitivity
+se2 <- confusionMatrix(pred_rpart_detect,
+                       test_set$detect)$byClass[("Sensitivity")]
+
+#Getting Specificity
+sp2 <- confusionMatrix(pred_rpart_detect,
+                       test_set$detect)$byClass[("Specificity")]
+
+results_rpart_detect <- data_frame(Goal = "Anomaly Detection",
+                                   Method = "Decision Tree",
+                                   Accuracy = a2,
+                                   Sensitivity = se2,
+                                   Specificity = sp2)
+
+#Displaying the results
+data.frame(results_rpart_detect) %>% knitr::kable()
+```
+
+We get an Accuracy of 98.87%, Sensitivity of 98.98% and Specificity of 98.74%
+
+### Network Attack Classification
+
+Using Random Tree for Network Anomaly Classification:
+
+```{r Decision_Tree_classify, message=FALSE, warning=FALSE}
+#Training
+train_rpart_attack_classify <- train(attack_class ~ ., 
+                             method = "rpart",
+                             tuneGrid = data.frame(cp = 0),
+                             data = train.data_attack_class)
+
+#Making predictions and getting the Accuracy
+a4 <- confusionMatrix(predict(train_rpart_attack_classify, test.data),
+                      test_set$attack_class)$overall["Accuracy"]
+
+results_rpart_classify <- data_frame(Goal = "Attack Classification",
+                                     Method = "Decision Tree",
+                                     Accuracy = a4)
+
+#Displaying the results
+data.frame(results_rpart_classify) %>% knitr::kable()
+```
+
+We get an Accuracy of 98.78%
+
+# Results
+
+It is observed that Random Forest gives us higher Accuracy, Specificity and Sensitivity values for Anomaly Detection.
+Radom Forest also gives us higher accuracy values for Network Attack Classification.
+Thereby, Ranger function's implementation of random forests is chosen as the final model to be trained on the edx set.
+
+TO train the edx set, firstly, the numerical features of the edx set will be scaled and centred. Following this, PCA will be performed on these scaled numerical features and only the first 16 Principal Components will be retained.
+
+Column no: 20 i.e 'num_outbound_cmds' will be removed from the validation set, as was done for the edx set during the Exploratory Data Analysis stage.
+
+Similar to what was done to the Test set while developing the model, we will be scaling and centering the validation set using the mean and standard deviation of the Edx set. We will then perform SVD-PCA on the numerical features of the Edx set and predict the principal components of the numerical features of the validation set using the predict function. Only the first 16 predicted principal components of the validation set will be retained.
+
+
+```{r Final_prediction, message=FALSE, warning=FALSE}
+#FIltering out the numerical features of the edx set
+num_edx <- as.data.frame(edx_set[,sapply(edx_set, is.numeric)])
+
+#Standardizing the numerical features of edx_set
+mean_edx <- apply(num_edx, 2, function(x){mean(x)})
+sd_edx <- apply(num_edx, 2, function(x){sd(x)})
+std_features_edx <- apply(num_edx,2,function(x){(x-mean(x))/(sd(x))})
+
+# Perfroming PCA on the standardized numerical features of Edx set
+pc <- prcomp(std_features_edx, scale. = F, center = F)
+
+#Chosing only the first 16 principal components
+edx.data <- data.frame(edx_set[,!sapply(edx_set, is.numeric)], pc$x[,1:16])
+
+#Final edx set for anomaly detection
+edx.data_detect <- edx.data %>% select(-c(attack, attack_class))
+
+#FInal edx set for Attack classification
+edx.data_attack_class <- edx.data %>% select(-c(attack, detect))
+
+#Removing column 20 i.e 'num_outbound_cmds'
+validation_set <- validation_set[,-20]
+
+#Selecting only numerical features
+num_validation <- as.data.frame(validation_set[,sapply(validation_set, is.numeric)])
+
+#Centering and Scaling the test set using the mean and Sd of edx sets
+std_features_validation <- mapply(function(x,y,z){(x-y)/z},num_validation,mean_edx,sd_edx)
+
+# Predict PCs of Validation set
+validation.data <- predict(pc, std_features_validation)
+
+# Selecting the first 16 predicted PCs
+validation.data <- data.frame(validation_set[,!sapply(validation_set, is.numeric)],validation.data[,1:16])
+validation.data <- validation.data %>% select(-c(attack, attack_class, detect))
+
+```
+
+We will then use the chosen model: Random Forest Ranger function to train on the Edx set.
+
+## Network anomaly Detection
+
+Using the edx set to train the final model for anomaly Detection and then making the predictions on the validation set:
+
+```{r Random_Forest_final, message=FALSE, warning=FALSE, results='hide'}
+edx_rf_detect <- ranger(detect ~ ., data = edx.data_detect)
+
+#Making predictions
+pred_detect <- predict(edx_rf_detect, data = validation.data)$predictions
+
+#Getting Accuracy
+acc_detect <- confusionMatrix(pred_detect,
+                      validation_set$detect)$overall["Accuracy"]
+
+#Getting Sensitivity
+sen_detect <- confusionMatrix(pred_detect,
+                      validation_set$detect)$byClass["Sensitivity"]
+
+#Getting Specificity
+spec_detect <- confusionMatrix(pred_detect,
+                      validation_set$detect)$byClass["Specificity"]
+
+```
+```{r Random_Forest_final1, message=FALSE, warning=FALSE}
+
+results_detect <- data_frame(Goal = "anomaly Detection",
+                                   Accuracy = acc_detect,
+                                   Sensitivity = sen_detect,
+                                   Specificity = spec_detect)
+
+#Displaying the results
+data.frame(results_detect) %>% knitr::kable()
+```
+
+
+We get an accuracy of 99.25%, Sensitivity of 99.4% and Specificity of 99.09% for Network anomaly Detection
+
+## Network Attack Classification
+
+Using the Edx set to train the final model for Attack Classification and then making the predictions on the validation set:
+
+```{r Random_Forest_final2, message=FALSE, warning=FALSE, results='hide'}
+edx_rf_attack_classify <- ranger(attack_class ~ ., data = edx.data_attack_class)
+
+#Making predictions and getting Accuracy value
+acc_classify <- confusionMatrix(predict(edx_rf_attack_classify, data = validation.data)$predictions,
+                validation_set$attack_class)$overall["Accuracy"]
+
+results_classify <- data_frame(Goal = "Attack Classification",
+                                   Accuracy = acc_classify)
+```
+```{r Random_Forest_final3, message=FALSE, warning=FALSE}
+#Displaying the results
+data.frame(results_classify) %>% knitr::kable()
+```
+
+We get an accuracy of 99.26% for Network Attack Classification.
+
+# Conclusion
+
+Excellent accuracy values of over 99% have been achieved for both: Network anomaly Detection as well as Attack Classification.
+For the Binomial anomaly Detection, the Sensitivity and Specificity values are reasonably good at 99.4% and 99.1% respectivley.
+
+A sensitivity of 99.4% implies that the rate of false alarms i.e the incorrect labeling of a normal network connection as one subject to an attack is only around 0.6%. High Sensitivity values are essential in a Network Intrussion Detection becuase blocking of benign network activity can severly impact productivity and business. High Specificity values are aslo highly desirable to maximise the detection of network attacks. A specificity of 99.1% implies that only around 0.9% of network attacks go undetecteded. 
+
+Although, substantial Dimension Reduction wasn't possible, we did manage to bring down the total number of predictors from 40 to 24 using Principal Component Analysis via Singular Value Decompoisiton of the Numerical Features. While PCA of mixed datatypes: Categorical and Numerical was attempted using the ‘PCAmix’ function under the ‘PCAmixdata’ package, we could have also performed Multiple Correspondance Analysis (MCA) on the categorical features to reduce the dimensions even more. MCA is an extension of the simple Correspondence Analysis, used during the Exploratory Data Analysis stages of this report, for summarizing and visualizing datasets containing multiple categorical variables. MCA can also be seen as a generalization of Principal Component Analysis when the variables to be analyzed are categorical instead of quantitative. The additional dimension reduction could have aided in reducing the computational time. Also, other algorithms such as KNN and GLM could have been used if the dimensions were reduced by a more sizeable amount.
+
+
